@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeonStrike | Global Threat Dashboard</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;600;900&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        :root {
+            --bg-black: #05070a;
+            --panel-bg: rgba(0, 0, 0, 0.4);
+            --cyan: #00f3ff;
+            --cyan-dim: rgba(0, 243, 255, 0.3);
+            --cyan-dark: #0a1622;
+            --red: #ff003c;
+            --red-dim: rgba(255, 0, 60, 0.1);
+            --green: #22c55e;
+            --text-gray: #007c8a;
+            --border: rgba(0, 243, 255, 0.1);
+            --f-mono: 'JetBrains Mono', monospace;
+            --f-sans: 'Outfit', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-black);
+            color: var(--cyan);
+            font-family: var(--f-mono);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            border: 4px solid var(--cyan-dark);
+        }
+
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 300px 1fr 220px;
+            grid-template-rows: 64px 1fr 32px;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Top Header */
+        .stats-bar {
+            grid-column: 1 / -1;
+            background: #0a0e14;
+            border-bottom: 1px solid rgba(8, 51, 68, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 20;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-box {
+            width: 40px;
+            height: 40px;
+            border: 1px solid var(--cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.3);
+        }
+
+        .logo-inner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--cyan);
+            transform: rotate(45deg);
+        }
+
+        .header-title h1 {
+            font-family: var(--f-sans);
+            font-size: 20px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            color: white;
+            line-height: 1;
+        }
+
+        .header-title span { color: #0ea5e9; }
+        .header-subtitle {
+            font-size: 10px;
+            color: #0369a1;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 32px;
+        }
+
+        .stat-item { text-align: right; }
+        .stat-label {
+            font-size: 10px;
+            color: #0369a1;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+        }
+        .stat-value.red { color: var(--red); text-shadow: 0 0 8px var(--red); }
+        .stat-value.cyan { color: var(--cyan); }
+
+        /* Sidebars */
+        .log-panel, .right-sidebar {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 16px;
+            border-radius: 2px;
+        }
+
+        .log-panel { margin-right: 0; }
+        .right-sidebar { margin-left: 0; }
+
+        .panel-header {
+            padding: 8px 12px;
+            background: rgba(8, 51, 68, 0.2);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .log-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .log-entry {
+            font-size: 11px;
+            margin-bottom: 4px;
+            padding: 4px 8px;
+            border-left: 2px solid var(--cyan);
+            background: rgba(0, 243, 255, 0.03);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .log-entry.critical {
+            border-left-color: var(--red);
+            background: var(--red-dim);
+        }
+
+        .log-time { color: var(--red); font-weight: bold; margin-right: 4px; }
+        .log-ip { color: white; opacity: 0.6; }
+        .log-protocol { color: var(--cyan); font-weight: bold; margin-left: 4px; }
+
+        /* Main Area */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 16px;
+            background: radial-gradient(circle at center, #0a1622 0%, #05070a 100%);
+        }
+
+        .visualization-area {
+            flex: 1;
+            position: relative;
+            background: #020406;
+            border: 1px solid rgba(8, 51, 68, 0.4);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        /* HUD Overlays */
+        .hud-overlay {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(8, 51, 68, 0.4);
+            padding: 8px;
+            font-size: 10px;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .hud-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px; }
+        .hud-row span:last-child { color: white; }
+
+        .view-toggle {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+        }
+
+        .toggle-btn {
+            padding: 4px 16px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 1px;
+        }
+
+        .toggle-btn.btn-active {
+            background: var(--cyan);
+            color: black;
+            border: none;
+        }
+
+        .toggle-btn.btn-inactive {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+        }
+
+        /* Bottom Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            height: 96px;
+        }
+
+        .grid-stat-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            padding: 12px;
+        }
+
+        .grid-stat-label { font-size: 10px; color: #0369a1; font-weight: bold; text-transform: uppercase; margin-bottom: 8px; }
+        .grid-stat-value { font-size: 24px; font-weight: 900; color: white; line-height: 1; }
+        .grid-stat-value span { font-size: 12px; color: #0369a1; font-weight: normal; margin-left: 4px; }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(8, 51, 68, 0.3);
+            margin-top: 8px;
+        }
+        .progress-fill { height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+
+        /* Right Sidebar Lists */
+        .sidebar-section { padding: 16px; }
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: bold;
+            color: #0369a1;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 4px;
+            margin-bottom: 12px;
+        }
+
+        .target-list { list-style: none; }
+        .target-item { margin-bottom: 12px; }
+        .target-info { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; }
+
+        .lockdown-btn {
+            height: 128px;
+            background: var(--cyan);
+            color: black;
+            padding: 12px;
+            font-weight: 900;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+            margin-top: auto;
+        }
+
+        .lockdown-btn:hover { background: white; }
+        .lockdown-title { font-size: 12px; text-transform: uppercase; letter-spacing: -0.5px; }
+        .lockdown-sub { font-size: 8px; opacity: 0.7; letter-spacing: 1px; }
+
+        /* Footer */
+        .footer {
+            grid-column: 1 / -1;
+            background: #0a0e14;
+            border-top: 1px solid rgba(8, 51, 68, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            font-size: 9px;
+            font-weight: bold;
+            color: #0369a1;
+        }
+
+        .status-pill { display: flex; align-items: center; gap: 4px; margin-right: 16px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+
+        /* Map/Globe transitions */
+        #globe-container, #map-container { transition: opacity 0.5s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-5px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <!-- Top Stats Bar -->
+        <header class="stats-bar">
+            <div class="header-left">
+                <div class="logo-box"><div class="logo-inner"></div></div>
+                <div class="header-title">
+                    <h1>CYBER_WATCH <span>v8.2</span></h1>
+                    <div class="header-subtitle">Sentinel Operations Center</div>
+                </div>
+            </div>
+            <div class="header-stats">
+                <div class="stat-item">
+                    <div class="stat-label">Threat Level</div>
+                    <div id="threat-level" class="stat-value red">CRITICAL_ALPHA</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Active Attacks</div>
+                    <div id="attacks-count" class="stat-value">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">System Node</div>
+                    <div class="stat-value cyan">AIS-CENT-01</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Left Logs Panel -->
+        <aside class="log-panel">
+            <div class="panel-header">
+                <span class="panel-title">Live Attack Stream</span>
+                <div class="status-dot" style="background: var(--red); box-shadow: 0 0 5px var(--red); animation: pulse 2s infinite;"></div>
+            </div>
+            <div id="log-container" class="log-container">
+                <!-- Logs will be prepended here -->
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="visualization-area">
+                <!-- HUD Overlay -->
+                <div class="hud-overlay">
+                    <div class="hud-row"><span>LATENCY:</span><span id="val-latency">42ms</span></div>
+                    <div class="hud-row"><span>PACKET_LOSS:</span><span>0.002%</span></div>
+                    <div class="hud-row"><span>INTEGRITY:</span><span style="color: var(--green)">NOMINAL</span></div>
+                </div>
+
+                <div class="view-toggle">
+                    <button id="btn-3d" class="toggle-btn btn-active">3D Globe</button>
+                    <button id="btn-2d" class="toggle-btn btn-inactive">2D Map</button>
+                </div>
+
+                <div id="globe-container" style="position: absolute; inset:0;"></div>
+                <div id="map-container" style="position: absolute; inset:0; z-index:-1; opacity:0;"></div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="grid-stat-card">
+                    <div class="grid-stat-label">Avg Attack Frequency</div>
+                    <div class="grid-stat-value">142<span>/min</span></div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 75%"></div></div>
+                </div>
+                <div class="grid-stat-card" style="border-color: rgba(255, 0, 60, 0.3)">
+                    <div class="grid-stat-label" style="color: #991b1b">High-Risk Targets</div>
+                    <div id="high-risk-val" class="grid-stat-value" style="color: var(--red)">8</div>
+                    <div style="font-size: 9px; color: #b91c1c; margin-top: 4px; font-style: italic;">Action Required</div>
+                </div>
+                <div class="grid-stat-card">
+                    <div class="grid-stat-label">Global Mitigation</div>
+                    <div class="grid-stat-value">94.2<span>%</span></div>
+                    <div class="progress-bar"><div class="progress-fill" style="width: 94%; background: var(--green); box-shadow: 0 0 8px var(--green);"></div></div>
+                </div>
+                <div class="grid-stat-card">
+                    <div class="grid-stat-label">Top Target</div>
+                    <div id="top-target" class="grid-stat-value" style="font-size: 18px;">WASH_DC</div>
+                    <div style="font-size: 9px; color: #0369a1; margin-top: 4px;">Node Tracking Active</div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside class="right-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Top Regional Targets</div>
+                <ul class="target-list">
+                    <li class="target-item">
+                        <div class="target-info"><span>US-EAST-1</span><span style="color: var(--red)">4.2k</span></div>
+                        <div class="progress-bar" style="height: 2px;"><div class="progress-fill" style="width: 85%; background: var(--red);"></div></div>
+                    </li>
+                    <li class="target-item">
+                        <div class="target-info"><span>EU-WEST-2</span><span style="color: #eab308">1.8k</span></div>
+                        <div class="progress-bar" style="height: 2px;"><div class="progress-fill" style="width: 40%; background: #eab308;"></div></div>
+                    </li>
+                    <li class="target-item">
+                        <div class="target-info"><span>AP-SOUTH-1</span><span style="color: var(--cyan)">0.9k</span></div>
+                        <div class="progress-bar" style="height: 2px;"><div class="progress-fill" style="width: 25%"></div></div>
+                    </li>
+                </ul>
+
+                <div style="margin-top: 32px;">
+                    <div class="sidebar-section-title">Network Saturation</div>
+                    <div id="saturation-container" style="display: flex; align-items: flex-end; gap: 2px; height: 40px;">
+                        <!-- Bars will jitter here -->
+                    </div>
+                </div>
+
+                <div style="margin-top: 32px;">
+                    <div class="sidebar-section-title">Security Nodes</div>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;">
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                        <div style="aspect-ratio: 1; background: var(--red); box-shadow: 0 0 10px var(--red);"></div>
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                        <div style="aspect-ratio: 1; background: #eab308;"></div>
+                        <div style="aspect-ratio: 1; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5);"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lockdown-btn">
+                <div class="lockdown-title">Deployment Lockdown</div>
+                <div class="lockdown-sub">Emergency Override 00-X</div>
+            </div>
+        </aside>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div style="display: flex;">
+                <div class="status-pill"><div class="status-dot"></div> DATABASE_CONNECTED</div>
+                <div class="status-pill"><div class="status-dot"></div> FIREWALL_ACTIVE</div>
+                <div style="opacity: 0.3; margin: 0 8px;">|</div>
+                <div style="color: #0284c7">SEC_ID: WHISPER-9912-A</div>
+            </div>
+            <div>&copy; 2026 SENTINEL SECURITY SYSTEMS</div>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/globe.gl"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <script>
+        // Constants & Config
+        const MAX_LOGS = 25;
+        const MAX_ARCS = 30;
+        const PROTOCOLS = ['TCP', 'UDP', 'HTTP', 'SSH', 'FTP', 'SQLi', 'RDP', 'SMB'];
+        const HOTSPOTS = [
+            { name: 'NY', lat: 40.7128, lng: -74.0060 },
+            { name: 'LON', lat: 51.5074, lng: -0.1278 },
+            { name: 'TOK', lat: 35.6762, lng: 139.6503 },
+            { name: 'MOS', lat: 55.7558, lng: 37.6173 },
+            { name: 'BEI', lat: 39.9042, lng: 116.4074 },
+            { name: 'SYD', lat: -33.8688, lng: 151.2093 },
+            { name: 'SP', lat: -23.5505, lng: -46.6333 },
+            { name: 'BER', lat: 52.5200, lng: 13.4050 },
+            { name: 'MUM', lat: 19.0760, lng: 72.8777 },
+            { name: 'SF', lat: 37.7749, lng: -122.4194 },
+            { name: 'SEA', lat: 47.6062, lng: -122.3321 },
+            { name: 'PAR', lat: 48.8566, lng: 2.3522 },
+            { name: 'AMS', lat: 52.3676, lng: 4.9041 },
+            { name: 'HK', lat: 22.3193, lng: 114.1694 },
+            { name: 'SIN', lat: 1.3521, lng: 103.8198 }
+        ];
+
+        // State
+        let attackCount = 0;
+        let arcsData = [];
+        let mapMarkers = [];
+        let currentMode = '3D'; // 3D or 2D
+        let globe, map;
+
+        // UI Elements
+        const logContainer = document.getElementById('log-container');
+        const attacksLabel = document.getElementById('attacks-count');
+        const btn3d = document.getElementById('btn-3d');
+        const btn2d = document.getElementById('btn-2d');
+        const globeContainer = document.getElementById('globe-container');
+        const mapContainer = document.getElementById('map-container');
+
+        // Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            initGlobe();
+            initMap();
+            startSimulation();
+            setupEventListeners();
+        });
+
+        function initGlobe() {
+            globe = Globe()
+                (globeContainer)
+                .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+                .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+                .backgroundImageUrl(null)
+                .backgroundColor('#05070a')
+                .arcColor('color')
+                .arcDashLength(0.4)
+                .arcDashGap(4)
+                .arcDashAnimateTime(1500)
+                .arcStroke(0.5)
+                .arcCircularResolution(64)
+                .arcsTransitionDuration(0);
+
+            // Auto-rotate
+            globe.controls().autoRotate = true;
+            globe.controls().autoRotateSpeed = 0.5;
+        }
+
+        function initMap() {
+            map = L.map('map-container', {
+                center: [20, 0],
+                zoom: 2,
+                zoomControl: false,
+                attributionControl: false
+            });
+
+            // Dark Map Tiles
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19
+            }).addTo(map);
+
+            // Init saturation bars
+            const sat = document.getElementById('saturation-container');
+            if (sat) {
+                for(let i=0; i<30; i++) {
+                    const b = document.createElement('div');
+                    b.style.flex = '1';
+                    b.style.background = 'var(--cyan)';
+                    b.style.opacity = '0.3';
+                    b.style.height = (Math.random() * 80 + 10) + '%';
+                    b.style.transition = 'height 0.3s ease';
+                    sat.appendChild(b);
+                }
+            }
+        }
+
+        function setupEventListeners() {
+            btn3d.addEventListener('click', () => switchMode('3D'));
+            btn2d.addEventListener('click', () => switchMode('2D'));
+        }
+
+        function switchMode(mode) {
+            if (mode === currentMode) return;
+            currentMode = mode;
+
+            if (mode === '3D') {
+                btn3d.classList.add('btn-active');
+                btn3d.classList.remove('btn-inactive');
+                btn2d.classList.add('btn-inactive');
+                btn2d.classList.remove('btn-active');
+                globeContainer.style.zIndex = '1';
+                globeContainer.style.opacity = '1';
+                mapContainer.style.zIndex = '-1';
+                mapContainer.style.opacity = '0';
+            } else {
+                btn2d.classList.add('btn-active');
+                btn2d.classList.remove('btn-inactive');
+                btn3d.classList.add('btn-inactive');
+                btn3d.classList.remove('btn-active');
+                mapContainer.style.zIndex = '1';
+                mapContainer.style.opacity = '1';
+                globeContainer.style.zIndex = '-1';
+                globeContainer.style.opacity = '0';
+                // Trigger map resize if needed
+                setTimeout(() => map.invalidateSize(), 100);
+            }
+        }
+
+        function startSimulation() {
+            setInterval(() => {
+                emitAttack();
+            }, Math.random() * 500 + 500);
+
+            // Latency jitter + Saturation animation
+            setInterval(() => {
+                const latency = 40 + Math.floor(Math.random() * 10);
+                const latencyEl = document.getElementById('val-latency');
+                if (latencyEl) latencyEl.textContent = latency + 'ms';
+
+                const sat = document.getElementById('saturation-container');
+                if (sat) {
+                    const bars = sat.children;
+                    for(let b of bars) {
+                        b.style.height = (10 + Math.random() * 90) + '%';
+                        b.style.opacity = (0.1 + Math.random() * 0.4);
+                    }
+                }
+            }, 1000);
+        }
+
+        function emitAttack() {
+            const source = HOTSPOTS[Math.floor(Math.random() * HOTSPOTS.length)];
+            const target = HOTSPOTS[Math.floor(Math.random() * HOTSPOTS.length)];
+            if (source === target) return;
+
+            const protocol = PROTOCOLS[Math.floor(Math.random() * PROTOCOLS.length)];
+            const isCritical = Math.random() > 0.8;
+            const ip = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+            const timestamp = new Date().toLocaleTimeString([], { hour12: false });
+
+            const attackData = {
+                startLat: source.lat,
+                startLng: source.lng,
+                endLat: target.lat,
+                endLng: target.lng,
+                color: isCritical ? '#ff3e3e' : '#00ffff',
+                protocol,
+                isCritical,
+                ip,
+                timestamp,
+                id: Date.now()
+            };
+
+            // Update Stats
+            attackCount++;
+            attacksLabel.textContent = attackCount.toLocaleString();
+
+            // Occasionally change top target
+            if (Math.random() > 0.95) {
+                document.getElementById('top-target').textContent = source.name + '_' + Math.floor(Math.random() * 99);
+            }
+
+            // Update Globe
+            arcsData.push(attackData);
+            if (arcsData.length > MAX_ARCS) arcsData.shift();
+            globe.arcsData(arcsData);
+
+            // Update Map
+            addMapMarker(attackData);
+
+            // Add Log
+            addLog(attackData);
+        }
+
+        function addLog(data) {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${data.isCritical ? 'critical' : 'normal'}`;
+            entry.innerHTML = `
+                <span class="log-time">[${data.timestamp}]</span>
+                <span class="log-ip">${data.ip}</span>
+                <span class="log-protocol">▶ ${data.protocol}</span>
+                <span class="log-severity">${data.isCritical ? 'CRITICAL' : 'NORMAL'}</span>
+            `;
+
+            logContainer.prepend(entry);
+
+            // Limit logs
+            if (logContainer.children.length > MAX_LOGS) {
+                logContainer.lastElementChild.remove();
+            }
+        }
+
+        function addMapMarker(data) {
+            const markerColor = data.isCritical ? '#ff3e3e' : '#00ffff';
+            
+            // Source Marker pulse
+            const pulseIcon = L.divIcon({
+                className: `attack-marker ${data.isCritical ? 'critical-marker' : ''}`,
+                iconSize: [8, 8]
+            });
+
+            const marker = L.marker([data.endLat, data.endLng], { icon: pulseIcon }).addTo(map);
+            
+            // Connect source to target on map (simple line)
+            const line = L.polyline([[data.startLat, data.startLng], [data.endLat, data.endLng]], {
+                color: markerColor,
+                weight: 1,
+                opacity: 0.6,
+                dashArray: '5, 5'
+            }).addTo(map);
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                map.removeLayer(marker);
+                map.removeLayer(line);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
